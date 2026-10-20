@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Venom AI - Your fictional friend and time coach</title>
+<meta name="description" content="Venom AI: a free AI companion that chats like a friend, builds your timetable, reminds you on time and lets you create your own characters.">
+<style>
+:root{--bg:#0b0e1a;--card:#161b33;--me:#e23636;--ai:#222849;--tx:#f3f4f8;--ac:#27d3e6}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx);height:100vh;height:100dvh;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+header{padding:10px 12px;background:var(--card);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+h1{font-size:18px;margin:0 6px 0 0}
+select,button,input{font-size:16px;border-radius:10px;border:0;padding:10px;font-family:inherit}
+select,input{background:var(--ai);color:var(--tx)}
+button{background:var(--ai);color:var(--tx);cursor:pointer}
+button.p{background:var(--me);color:#fff}
+nav{display:flex;gap:6px;padding:8px 12px;background:var(--card);border-top:1px solid #2a3157}
+nav button{flex:1;padding:9px 4px;font-size:14px}
+nav button.on{background:var(--ac);color:#04121a;font-weight:700}
+.tab{display:none;flex:1;min-height:0;flex-direction:column}
+.tab.on{display:flex}
+#chat,.pad{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.m{max-width:88%;padding:10px 12px;border-radius:14px;white-space:pre-wrap;line-height:1.4}
+.me{align-self:flex-end;background:var(--me)}
+.ai{align-self:flex-start;background:var(--ai)}
+.quick{display:flex;gap:6px;padding:0 12px 6px;overflow-x:auto}
+.quick button{white-space:nowrap;padding:8px 12px;font-size:14px;background:var(--card)}
+form,.row{display:flex;gap:8px}
+form{padding:10px 12px;background:var(--card)}
+form input,.row input{flex:1;min-width:0}
+.item{display:flex;gap:8px;align-items:center;background:var(--card);padding:10px;border-radius:12px}
+.item span{flex:1;word-break:break-word}
+.item.done span{text-decoration:line-through;opacity:.5}
+h2{margin:6px 0 0;font-size:16px}
+small{opacity:.7}
+</style></head><body>
+<header>
+  <h1>🕷️ Venom AI</h1>
+  <select id="persona"></select>
+  <button id="clear">New chat</button>
+</header>
+
+<section class="tab on" id="tab-chat">
+  <div id="chat"></div>
+  <div class="quick">
+    <button>Make my timetable for today</button>
+    <button>What should I do right now?</button>
+    <button>Give me 5 ideas</button>
+    <button>Motivate me, I'm tired</button>
+  </div>
+  <form id="f"><input id="t" placeholder="Talk to your character..." autocomplete="off"><button class="p">Send</button></form>
+</section>
+
+<section class="tab" id="tab-time"><div class="pad">
+  <h2>My timetable</h2>
+  <div class="row"><input type="time" id="tt" style="flex:0 0 120px"><input id="tx" placeholder="Task, e.g. Study 1 hour"><button class="p" id="addtask">Add</button></div>
+  <div id="tasks" style="display:flex;flex-direction:column;gap:8px"></div>
+  <button id="askplan">Ask my character to build my timetable</button>
+  <small>Your character reminds you at each task time while this page is open.</small>
+</div></section>
+
+<section class="tab" id="tab-dev"><div class="pad">
+  <h2>My devices</h2>
+  <div class="row"><input id="dn" placeholder="New device, e.g. Phone, Laptop, Tablet"><button class="p" id="adddev">Add</button></div>
+  <div id="devs" style="display:flex;flex-direction:column;gap:8px"></div>
+  <button id="notif">Turn on reminders on this device</button>
+  <small>Open this website on each device and tap the button above there. Your character knows your device list and can help you stay off distractions.</small>
+</div></section>
+
+<section class="tab" id="tab-char"><div class="pad">
+  <h2>Make a new character</h2>
+  <input id="cn" placeholder="Name (any fictional character or your own)">
+  <input id="cs" placeholder="How they talk (e.g. funny, strict, wise)">
+  <button class="p" id="addchar">Create character</button>
+  <div id="chars" style="display:flex;flex-direction:column;gap:8px"></div>
+</div></section>
+
+<nav>
+  <button data-t="chat" class="on">Chat</button>
+  <button data-t="time">Timetable</button>
+  <button data-t="dev">Devices</button>
+  <button data-t="char">Characters</button>
+</nav>
+
+<script>
+const $=s=>document.querySelector(s);
+const BUILTIN=["Venom","Iron Man","Captain America","Black Widow","Thor","Spider-Man"];
+let S={msgs:[],custom:[],tasks:[],devices:[],sel:"Venom",notified:{}};
+try{Object.assign(S,JSON.parse(localStorage.getItem('venom_v2')||'{}'))}catch(e){}
+function save(){try{localStorage.setItem('venom_v2',JSON.stringify(S))}catch(e){}}
+const chat=$('#chat'),p=$('#persona');
+
+function bubble(role,text){const d=document.createElement('div');d.className='m '+(role==='user'?'me':'ai');d.textContent=text;chat.appendChild(d);chat.scrollTop=chat.scrollHeight;return d}
+function fillPersona(){p.innerHTML='';BUILTIN.forEach(n=>p.add(new Option(n,n)));S.custom.forEach(c=>p.add(new Option('⭐ '+c.name,c.name)));p.value=S.sel;if(p.value!==S.sel){S.sel="Venom";p.value="Venom"}}
+function ctx(){
+  const now=new Date();
+  const tasks=S.tasks.slice().sort((a,b)=>a.time.localeCompare(b.time)).map(t=>`${t.time} ${t.text}${t.done?' (done)':''}`).join('; ')||'none yet';
+  const devs=S.devices.join(', ')||'none listed';
+  return `Current local time: ${now.toLocaleString()}. Timetable: ${tasks}. Devices: ${devs}.`;
+}
+function who(){return S.custom.find(c=>c.name===S.sel)}
+async function api(extra){
+  const c=who();
+  const messages=S.msgs.slice(-20).map(m=>({role:m.role,content:m.content}));
+  if(extra)messages.push({role:'user',content:extra});
+  const r=await fetch('/.netlify/functions/chat',{method:'POST',body:JSON.stringify({persona:S.sel,custom:!!c,style:c?c.style:'',context:ctx(),messages})});
+  const d=await r.json();return d.reply||'No reply.';
+}
+async function send(text){
+  if(!text.trim())return;
+  showTab('chat');
+  bubble('user',text);S.msgs.push({role:'user',content:text});
+  const w=bubble('assistant','...');
+  try{const rep=await api();w.textContent=rep;S.msgs.push({role:'assistant',content:rep})}
+  catch(e){w.textContent='Connection error. Try again.';S.msgs.pop()}
+  save();
+}
+async function nudge(){
+  if(document.hidden)return;
+  const w=bubble('assistant','...');
+  try{const rep=await api('(Automatic check-in from the app: speak first, as my friend and time instructor. Look at my timetable and the time now, tell me in 1-2 short sentences what I should be doing, and ask how it is going.)');w.textContent=rep;S.msgs.push({role:'assistant',content:rep});save()}
+  catch(e){w.remove()}
+}
+function notify(title,body){try{if('Notification' in window&&Notification.permission==='granted')new Notification(title,{body})}catch(e){}}
+
+function showTab(n){document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.id==='tab-'+n));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===n))}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
+
+function renderTasks(){
+  const box=$('#tasks');box.innerHTML='';
+  S.tasks.slice().sort((a,b)=>a.time.localeCompare(b.time)).forEach(t=>{
+    const d=document.createElement('div');d.className='item'+(t.done?' done':'');
+    const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!t.done;cb.style.flex='0 0 auto';
+    cb.onchange=()=>{t.done=cb.checked;save();renderTasks()};
+    const s=document.createElement('span');s.textContent=t.time+'  '+t.text;
+    const x=document.createElement('button');x.textContent='✕';x.onclick=()=>{S.tasks=S.tasks.filter(k=>k!==t);save();renderTasks()};
+    d.append(cb,s,x);box.appendChild(d);
+  });
+}
+$('#addtask').onclick=()=>{const time=$('#tt').value,text=$('#tx').value.trim();if(!time||!text)return;S.tasks.push({time,text,done:false});$('#tx').value='';save();renderTasks()};
+$('#askplan').onclick=()=>send('Please build my timetable for today. Ask me anything you need first.');
+
+function renderDevs(){
+  const box=$('#devs');box.innerHTML='';
+  S.devices.forEach((n,i)=>{const d=document.createElement('div');d.className='item';const s=document.createElement('span');s.textContent='📱 '+n;const x=document.createElement('button');x.textContent='✕';x.onclick=()=>{S.devices.splice(i,1);save();renderDevs()};d.append(s,x);box.appendChild(d)});
+}
+$('#adddev').onclick=()=>{const n=$('#dn').value.trim().slice(0,40);if(!n)return;S.devices.push(n);$('#dn').value='';save();renderDevs()};
+$('#notif').onclick=async()=>{try{const r=await Notification.requestPermission();alert(r==='granted'?'Reminders are on for this device.':'Reminders are blocked. Allow notifications in your browser settings.')}catch(e){alert('This browser does not support reminders.')}};
+
+function renderChars(){
+  const box=$('#chars');box.innerHTML='';
+  S.custom.forEach(c=>{const d=document.createElement('div');d.className='item';const s=document.createElement('span');s.textContent='⭐ '+c.name+(c.style?' - '+c.style:'');
+    const u=document.createElement('button');u.textContent='Talk';u.onclick=()=>{S.sel=c.name;save();fillPersona();showTab('chat');bubble('assistant',c.name+' is here. Say hello!')};
+    const x=document.createElement('button');x.textContent='✕';x.onclick=()=>{S.custom=S.custom.filter(k=>k!==c);if(S.sel===c.name)S.sel='Venom';save();fillPersona();renderChars()};
+    d.append(s,u,x);box.appendChild(d)});
+}
+$('#addchar').onclick=()=>{const name=$('#cn').value.trim().slice(0,40),style=$('#cs').value.trim().slice(0,300);if(!name)return;
+  S.custom=S.custom.filter(c=>c.name!==name);S.custom.push({name,style});S.sel=name;$('#cn').value='';$('#cs').value='';save();fillPersona();renderChars();showTab('chat');bubble('assistant',name+' is here. Say hello!')};
+
+p.onchange=()=>{S.sel=p.value;save()};
+$('#f').onsubmit=e=>{e.preventDefault();const v=$('#t').value;$('#t').value='';send(v)};
+document.querySelectorAll('.quick button').forEach(b=>b.onclick=()=>send(b.textContent));
+$('#clear').onclick=()=>{S.msgs=[];save();chat.innerHTML='';bubble('assistant','Fresh start. What are we conquering today?')};
+
+setInterval(()=>{
+  const n=new Date(),hm=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'),day=n.toDateString();
+  S.tasks.forEach(t=>{const k=day+t.time+t.text;if(t.time===hm&&!t.done&&!S.notified[k]){S.notified[k]=1;const m=S.sel+' here: it is '+t.time+'. Time for: '+t.text+'. Move now, I am watching.';bubble('assistant',m);S.msgs.push({role:'assistant',content:m});notify('Time for: '+t.text,m);save()}});
+},20000);
+setInterval(nudge,30*60*1000);
+
+fillPersona();renderTasks();renderDevs();renderChars();
+S.msgs.slice(-40).forEach(m=>bubble(m.role,m.content));
+if(!S.msgs.length){const g="I am "+S.sel+", your friend and time instructor. Tell me your goals, or add tasks in Timetable and I will keep you on schedule. I will check in on you while this page is open.";bubble('assistant',g);S.msgs.push({role:'assistant',content:g});save()}
+</script></body></html>
